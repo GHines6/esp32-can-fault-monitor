@@ -412,9 +412,8 @@ esp32-can-fault-monitor/
 │   ├── can_logger.py
 │   ├── analyze_imu.py
 │   └── imu_log.csv
-├── data-plots/
-│   └── acceleration_plot.png
 ├── Data-Plots/
+│   └── acceleration_plot.png
 │   └── gyroscope_plot.png
 └── Outputs/
     └── SensorNodeOutput.png
