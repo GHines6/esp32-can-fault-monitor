@@ -1,8 +1,6 @@
 # ESP32 CAN-Based Distributed IMU and Fault-Monitoring System
 
-A two-node embedded system that uses ESP32 microcontrollers, SN65HVD230 CAN transceivers, and an MPU-6050 IMU to transmit six-axis motion data over a physical CAN bus.
-
-The project implements sensor acquisition, binary CAN payload encoding, heartbeat supervision, sequence monitoring, sensor-fault isolation, automatic recovery, serial data logging, CSV export, statistical analysis, and time-series visualization.
+A two-node embedded system built with ESP32 microcontrollers, SN65HVD230 CAN transceivers, and an MPU-6050 IMU. The system transmits six-axis motion telemetry over a physical CAN bus, distinguishes sensor faults from node or link failures, and logs the received data to CSV for Python analysis and visualization.
 
 ## Project Highlights
 
@@ -10,7 +8,7 @@ The project implements sensor acquisition, binary CAN payload encoding, heartbea
 - Three CAN message types for acceleration, heartbeat/status, and gyroscope data
 - Six-axis MPU-6050 telemetry transmitted as signed 16-bit values
 - CAN identifier and payload-length validation
-- Acceleration-frame sequence monitoring with correct `255 -> 0` rollover behavior
+- Sequence monitoring with correct `255 -> 0` rollover behavior
 - Separate data-frame and heartbeat timeout detection
 - MPU I2C acknowledgment and complete-read validation
 - Sensor failure isolated from node or CAN-link failure
@@ -56,7 +54,7 @@ The sensor node:
 - Transmits acceleration data on CAN ID `0x100`
 - Transmits heartbeat and sensor-health status on CAN ID `0x101`
 - Transmits gyroscope data on CAN ID `0x102`
-- Stops sending invalid acceleration and gyroscope frames during a sensor fault
+- Stops sending invalid sensor data during an MPU fault
 - Continues transmitting heartbeat messages while the ESP32 and CAN link remain operational
 - Automatically resumes telemetry when valid MPU communication returns
 
@@ -73,7 +71,7 @@ The monitor node:
 - Detects data-frame timeouts
 - Detects heartbeat timeouts
 - Reports sensor-health state received over CAN
-- Reports recovery when data or heartbeat communication resumes
+- Reports recovery when communication resumes
 - Sends structured telemetry to the host computer over USB serial
 
 ## Hardware
@@ -132,9 +130,9 @@ Each Waveshare transceiver board includes a 120-ohm termination resistor. With b
 - Bit rate: `125 kbps`
 - Identifier type: Standard 11-bit
 - Maximum payload: 8 bytes
-- Current application update period: approximately 1 second
+- Current update period: approximately 1 second
 
-The 125 kbps value is the bus bit rate, not the measurement update rate. The current firmware transmits one acceleration frame, one gyroscope frame, and one heartbeat frame approximately once per second.
+The 125 kbps value is the bus bit rate, not the measurement update rate. The firmware currently transmits one acceleration frame, one gyroscope frame, and one heartbeat frame approximately once per second.
 
 ## CAN Message Map
 
@@ -161,9 +159,7 @@ Payload length: **2 bytes**
 | 0 | Heartbeat sequence counter |
 | 1 | Sensor-health status |
 
-Current status encoding:
-
-| Value | Meaning |
+| Status | Meaning |
 |---:|---|
 | `1` | MPU sensor healthy |
 | `0` | MPU sensor fault active |
@@ -210,19 +206,15 @@ The current firmware uses the MPU-6050 default measurement ranges.
 
 Default range: `+/-2 g`
 
-Sensitivity:
-
 ```text
 16384 counts/g
 ```
-
-Conversion:
 
 ```cpp
 float accelX_g = accelX / 16384.0f;
 ```
 
-When the module is lying approximately flat, the observed readings are typically close to:
+When the module is lying approximately flat, the readings are typically near:
 
 ```text
 Accel X: 0 g
@@ -234,13 +226,9 @@ Accel Z: +1 g
 
 Default range: `+/-250 deg/s`
 
-Sensitivity:
-
 ```text
 131 counts/(deg/s)
 ```
-
-Conversion:
 
 ```cpp
 float gyroX_dps = gyroX / 131.0f;
@@ -252,23 +240,19 @@ A stationary sensor reads near zero degrees per second with normal bias and nois
 
 ### I2C Acknowledgment Check
 
-The sensor node stores the return value from the register-selection transaction:
-
 ```cpp
 uint8_t i2cStatus = Wire.endTransmission(false);
 ```
 
-A value of zero means the MPU acknowledged the request.
+A value of zero means the MPU acknowledged the register request.
 
 ### Complete-Read Check
-
-The sensor node verifies that the full register block arrived:
 
 ```cpp
 uint8_t bytesReceived = Wire.requestFrom(MPU_ADDR, 14);
 ```
 
-The sensor sample is accepted only when:
+The sample is accepted only when:
 
 ```cpp
 bytesReceived == 14
@@ -282,10 +266,10 @@ During an MPU failure:
 - Gyroscope frames stop
 - Heartbeat frames continue
 - Heartbeat status changes to fault
-- The monitor eventually reports a data-frame timeout
+- The monitor reports a data-frame timeout
 - The monitor does not report a heartbeat timeout while the node and CAN link remain active
 
-This allows the system to distinguish a failed sensor from a failed embedded node or failed CAN path.
+This distinguishes a failed sensor from a failed embedded node or CAN path.
 
 ### Node or CAN-Link Failure
 
@@ -294,13 +278,13 @@ If the sensor node or CAN connection fails:
 - Acceleration frames stop
 - Gyroscope frames stop
 - Heartbeat frames stop
-- The monitor reports both a data-frame timeout and heartbeat timeout
+- The monitor reports both data-frame and heartbeat timeouts
 
 ### Automatic Recovery
 
 When communication returns:
 
-- Sensor telemetry automatically resumes
+- Sensor telemetry resumes automatically
 - Sensor health returns to healthy
 - The sensor node reports recovery
 - The monitor reports data-frame or heartbeat recovery as applicable
@@ -311,19 +295,17 @@ No manual reset is required.
 
 The acceleration and gyroscope frames include independent unsigned 8-bit sequence counters.
 
-An 8-bit counter has 256 possible values:
-
 ```text
 0 through 255
 ```
 
-Normal rollover is:
+Normal rollover:
 
 ```text
 254 -> 255 -> 0 -> 1
 ```
 
-The monitor currently validates the acceleration-frame sequence:
+The monitor validates acceleration-frame continuity:
 
 ```cpp
 uint8_t expectedCounter = lastCounter + 1;
@@ -336,8 +318,6 @@ if (rxFrame.data[0] != expectedCounter) {
 The rollover from 255 to 0 is handled correctly because both values use `uint8_t` arithmetic.
 
 ## Python Data Pipeline
-
-The Python portion provides an end-to-end path from embedded telemetry to analysis.
 
 ### Logger
 
@@ -440,8 +420,6 @@ esp32-can-fault-monitor/
     └── SensorNodeOutput.png
 ```
 
-> Note: The two plot folders currently use different capitalization. They should be merged into one consistently named folder in a future cleanup commit.
-
 ## Running the Project
 
 ### Firmware
@@ -451,7 +429,7 @@ esp32-can-fault-monitor/
 3. Upload `Firmware/sensor_node.cpp` to the sensor-node ESP32.
 4. Upload `Firmware/monitor_node.cpp` to the monitor-node ESP32.
 5. Confirm both nodes use 125 kbps CAN configuration.
-6. Close the Arduino Serial Monitor before starting the Python logger.
+6. Close Arduino Serial Monitor before starting the Python logger.
 
 ### Python Logger
 
@@ -515,7 +493,7 @@ The script prints summary statistics and generates acceleration and gyroscope pl
 - The monitor validates acceleration sequence continuity but does not separately validate gyro sequence continuity
 - The monitor does not currently implement a separate gyroscope timeout
 - The heartbeat status uses a simple healthy/fault value rather than a multi-bit status field
-- The Python serial port is currently configured manually
+- The Python serial port is configured manually
 - The prototype uses breadboards and jumper wiring rather than a custom PCB
 
 ## Future Improvements
